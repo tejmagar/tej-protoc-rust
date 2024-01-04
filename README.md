@@ -1,11 +1,19 @@
 # tej-protoc
 
-A custom tej_protocol implemented in Rust language for fast file and message transfer. 
+A custom tej_protocol implemented in Rust language for fast file and message transfer.
 Also, checkout [Python](https://github.com/tejmagar/tej-protoc) implementation.
+
+## Installation
+
+```
+[dependencies]
+tej-protoc = { git = "https://github.com/tejmagar/tej-protoc-rust" }
+```
 
 ## Example Usage
 
 ### Client
+
 Simple client demo
 
 ```rust
@@ -43,8 +51,8 @@ fn test_client() {
 }
 ```
 
-
 ### Server
+
 ```rust
 fn test_server() {
     println!("Starting server in 127.0.0.1:1234");
