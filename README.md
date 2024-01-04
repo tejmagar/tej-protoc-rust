@@ -1,6 +1,6 @@
 # tej-protoc
 
-A custom tej_protocol implemented in Rust langauge for fast file and message transfer. 
+A custom tej_protocol implemented in Rust language for fast file and message transfer. 
 Also, checkout [Python](https://github.com/tejmagar/tej-protoc) implementation.
 
 ## Example Usage
