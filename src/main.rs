@@ -2,7 +2,8 @@ use std::io::Write;
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::thread;
 use tej_protoc::protoc::decoder::{decode_tcp_stream, DecodedResponse};
-use tej_protoc::protoc::encoder::build_bytes_for_message;
+use tej_protoc::protoc::encoder::{build_bytes, build_bytes_for_message, build_raw_bytes};
+use tej_protoc::protoc::File;
 
 
 fn handle_decoded_response(tcp_stream: &mut TcpStream, decoded_response: DecodedResponse) {
@@ -12,6 +13,10 @@ fn handle_decoded_response(tcp_stream: &mut TcpStream, decoded_response: Decoded
 fn test_client() {
     let mut tcp_stream = TcpStream::connect("127.0.0.1:1234").unwrap();
     println!("Connected to 127.0.0.1:1234");
+
+    let a: Vec<&File> = Vec::new();
+    let bytes = build_raw_bytes(3, 1, &a, &"Test 123".as_bytes().to_vec());
+    tcp_stream.write_all(&bytes).unwrap();
 
     loop {
         let decoded_response = decode_tcp_stream(&mut tcp_stream);
@@ -43,7 +48,8 @@ fn test_server() {
         thread::spawn(move || {
             print!("Connected");
             let mut tcp_stream = tcp_stream.unwrap();
-            let bytes = build_bytes_for_message(&"Test 123".as_bytes().to_vec());
+            let a: Vec<&File> = Vec::new();
+            let bytes = build_raw_bytes(1, 1,  &a, &"Test 123".as_bytes().to_vec());
             tcp_stream.write_all(&bytes).unwrap();
 
             loop {
@@ -55,6 +61,6 @@ fn test_server() {
 }
 
 fn main() {
-    // test_client();
-    test_server();
+    test_client();
+    // test_server();
 }

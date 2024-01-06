@@ -18,15 +18,13 @@ impl File {
 pub mod encoder {
     use crate::protoc::{File};
 
-    pub fn build_raw_bytes(status: u8, app_status: u8, protocol_version: u8, files: &Vec<&File>,
+    pub fn build_raw_bytes(app_status: u8, protocol_version: u8, files: &Vec<&File>,
                            message: &Vec<u8>) -> Vec<u8> {
         let mut bytes_buffer: Vec<u8> = Vec::new();
 
         // Construct bytes
-        let status = status << 7;
-        let app_status = app_status >> 1;
-
-        bytes_buffer.push(status | app_status);
+        let status_byte = app_status | 0b10000000;
+        bytes_buffer.push(status_byte);
         bytes_buffer.push(protocol_version);
 
         let number_of_files: u64 = files.len() as u64;
@@ -70,7 +68,7 @@ pub mod encoder {
             tmp_message = message.unwrap();
         }
 
-        return build_raw_bytes(1, 0, 1, &tmp_files, &tmp_message);
+        return build_raw_bytes(0, 1, &tmp_files, &tmp_message);
     }
 
     pub fn build_bytes_for_message(message: &Vec<u8>) -> Vec<u8> {
@@ -220,7 +218,7 @@ pub mod tests {
         let file = File::new("hello".as_bytes().to_vec(), file_buffer);
         files.push(&file);
 
-        let raw_bytes = build_raw_bytes(FirstBit as u8, 0, 1, &files, &"".as_bytes().to_vec());
+        let raw_bytes = build_raw_bytes(0, 1, &files, &"".as_bytes().to_vec());
         print!("{:?}", raw_bytes);
     }
 }
