@@ -1,2 +1,2 @@
 pub mod protoc;
-mod ping;
+pub mod ping;
