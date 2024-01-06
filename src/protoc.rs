@@ -1,4 +1,4 @@
-enum StatusCode {
+pub enum StatusCode {
     FirstBit = 1,
     Ping = 2,
 }
@@ -14,7 +14,6 @@ impl File {
         File { name, data }
     }
 }
-
 
 pub mod encoder {
     use crate::protoc::{File};
