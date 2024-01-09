@@ -106,12 +106,12 @@ pub mod decoder {
             // If data to read is lesser than buffer size, read the remaining data else read limited data
             if remaining < 1024 {
                 let mut buffer: Vec<u8> = vec![0u8; remaining];
-                tcp_stream.read(&mut buffer).unwrap();
+                tcp_stream.read_exact(&mut buffer).unwrap();
                 bytes.extend(buffer);
                 read += remaining;
             } else {
                 let mut buffer = [0u8; 1024];
-                tcp_stream.read(&mut buffer).unwrap();
+                tcp_stream.read_exact(&mut buffer).unwrap();
                 bytes.extend(buffer);
                 read += 1024;
             }
