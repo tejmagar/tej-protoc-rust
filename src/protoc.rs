@@ -96,51 +96,66 @@ pub mod decoder {
         pub message: Vec<u8>,
     }
 
+    pub fn read_bytes(tcp_stream: &mut TcpStream, size: usize) -> Vec<u8> {
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut read = 0;
+
+        while read != size {
+            let remaining = size - read;
+
+            // If data to read is lesser than buffer size, read the remaining data else read limited data
+            if remaining < 1024 {
+                let mut buffer: Vec<u8> = vec![0u8; size];
+                tcp_stream.read_exact(&mut buffer).unwrap();
+                bytes.extend(buffer);
+            } else {
+                let mut buffer = [0u8; 1024];
+                tcp_stream.read_exact(&mut buffer).unwrap();
+                bytes.extend(buffer);
+            }
+        }
+
+        return bytes;
+    }
+
     pub fn read_first_byte(tcp_stream: &mut TcpStream) -> (u8, u8) {
-        let mut buffer = [0u8; 1];
-        tcp_stream.read_exact(&mut buffer).unwrap();
+        let bytes = read_bytes(tcp_stream, 1);
 
         // Extract status codes
-        let mixed_status = buffer[0];
+        let mixed_status = bytes[0];
         let status_code = mixed_status >> 7;
         let app_status = mixed_status & 0b01111111;
         return (status_code, app_status);
     }
 
     pub fn read_protocol_version(tcp_stream: &mut TcpStream) -> u8 {
-        let mut buffer = [0u8; 1];
-        tcp_stream.read_exact(&mut buffer).unwrap();
-        return buffer[0];
+        let bytes = read_bytes(tcp_stream, 1);
+        return bytes[0];
     }
 
     pub fn read_files_count(tcp_stream: &mut TcpStream) -> u64 {
-        let mut buffer = [0u8; 8];
-        tcp_stream.read_exact(&mut buffer).unwrap();
-        return u64::from_be_bytes(buffer);
+        let bytes = read_bytes(tcp_stream, 8);
+        return u64::from_be_bytes(bytes.try_into().unwrap());
     }
 
     pub fn read_filename_length(tcp_stream: &mut TcpStream) -> u16 {
-        let mut buffer = [0u8; 2];
-        tcp_stream.read_exact(&mut buffer).unwrap();
-        return u16::from_be_bytes(buffer);
+        let bytes = read_bytes(tcp_stream, 2);
+        return u16::from_be_bytes(bytes.try_into().unwrap());
     }
 
     pub fn read_filename(tcp_stream: &mut TcpStream, filename_length: u16) -> Vec<u8> {
-        let mut buffer: Vec<u8> = vec![0u8; filename_length as usize];
-        tcp_stream.read_exact(&mut buffer).unwrap();
-        return buffer;
+        let bytes = read_bytes(tcp_stream, filename_length as usize);
+        return bytes;
     }
 
     pub fn read_file_size(tcp_stream: &mut TcpStream) -> u64 {
-        let mut buffer = [0u8; 8];
-        tcp_stream.read_exact(&mut buffer).unwrap();
-        return u64::from_be_bytes(buffer);
+        let bytes = read_bytes(tcp_stream, 8);
+        return u64::from_be_bytes(bytes.try_into().unwrap());
     }
 
     pub fn read_file_data(tcp_stream: &mut TcpStream, file_size: u64) -> Vec<u8> {
-        let mut buffer = vec![0u8; file_size as usize];
-        tcp_stream.read_exact(&mut buffer).unwrap();
-        return buffer;
+        let bytes = read_bytes(tcp_stream, file_size as usize);
+        return bytes;
     }
 
     pub fn read_files(tcp_stream: &mut TcpStream, num_files: u64) -> Vec<File> {
@@ -163,15 +178,13 @@ pub mod decoder {
     }
 
     pub fn read_message_length(tcp_stream: &mut TcpStream) -> u64 {
-        let mut buffer = [0u8; 8];
-        tcp_stream.read_exact(&mut buffer).unwrap();
-        return u64::from_be_bytes(buffer);
+        let bytes = read_bytes(tcp_stream, 8);
+        return u64::from_be_bytes(bytes.try_into().unwrap());
     }
 
     pub fn read_message(tcp_stream: &mut TcpStream, message_length: u64) -> Vec<u8> {
-        let mut buffer = vec![0u8; message_length as usize];
-        tcp_stream.read_exact(&mut buffer).unwrap();
-        return buffer;
+        let bytes = read_bytes(tcp_stream, message_length as usize);
+        return bytes;
     }
 
     pub fn decode_tcp_stream(tcp_stream: &mut TcpStream) -> Result<DecodedResponse, String> {
@@ -205,7 +218,6 @@ pub mod tests {
     use std::io::Read;
     use crate::protoc::{File};
     use crate::protoc::encoder::build_raw_bytes;
-    use crate::protoc::StatusCode::FirstBit;
 
     #[test]
     pub fn test_build_raw_bytes() {
