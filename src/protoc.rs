@@ -81,7 +81,7 @@ pub mod encoder {
 }
 
 pub mod decoder {
-    use std::io::Read;
+    use std::io::{Read};
     use std::net::TcpStream;
     use crate::protoc::File;
     use crate::protoc::StatusCode::FirstBit;
@@ -105,13 +105,15 @@ pub mod decoder {
 
             // If data to read is lesser than buffer size, read the remaining data else read limited data
             if remaining < 1024 {
-                let mut buffer: Vec<u8> = vec![0u8; size];
-                tcp_stream.read_exact(&mut buffer).unwrap();
+                let mut buffer: Vec<u8> = vec![0u8; remaining];
+                tcp_stream.read(&mut buffer).unwrap();
                 bytes.extend(buffer);
+                read += remaining;
             } else {
                 let mut buffer = [0u8; 1024];
-                tcp_stream.read_exact(&mut buffer).unwrap();
+                tcp_stream.read(&mut buffer).unwrap();
                 bytes.extend(buffer);
+                read += 1024;
             }
         }
 
@@ -198,6 +200,7 @@ pub mod decoder {
         let protocol_version = read_protocol_version(tcp_stream);
         let number_of_files = read_files_count(tcp_stream);
         let files = read_files(tcp_stream, number_of_files);
+
         let message_length = read_message_length(tcp_stream);
         let message = read_message(tcp_stream, message_length);
 

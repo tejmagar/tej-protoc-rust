@@ -11,8 +11,15 @@ from tej_protoc.callbacks import ResponseCallback
 class TestCallback(ResponseCallback):
     def connected(self, client: socket.socket):
         print("Connected")
-        # self.client.send(protocol.BytesBuilder(0)
-        #                  .add_file('a.png', open('bmc.png', 'rb').read()).set_message(b'').bytes())
+        file = open('bmc.png', 'rb').read()
+        print("size", len(file))
+
+# .add_file('a.png', file)
+        bytes = (protocol.BytesBuilder(0)
+                 .add_file('a.png', file)
+                 .set_message(b'09090').bytes())
+        # print(bytes)
+        self.client.send(bytes)
 
     def received(self, files: List[File], message_data: bytes):
 
