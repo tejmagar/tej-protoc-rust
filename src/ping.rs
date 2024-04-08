@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::net::TcpStream;
-use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
+use std::sync::{Arc, RwLock};
 use std::thread::{self, JoinHandle, sleep};
 use std::time::Duration;
 use crate::protoc::encoder::build_raw_bytes;

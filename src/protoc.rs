@@ -1,8 +1,3 @@
-use std::io::ErrorKind;
-use std::net::TcpStream;
-use crate::protoc::decoder::{DecodedResponse, read_bytes, read_files, read_files_count, read_first_byte, read_message_length, read_protocol_version};
-use crate::protoc::StatusCode::FirstBit;
-
 pub enum StatusCode {
     FirstBit = 1,
     Ping = 2,
@@ -89,6 +84,7 @@ pub mod decoder {
     use std::io::{ErrorKind, Read};
     use std::net::TcpStream;
     use crate::protoc::File;
+    use crate::protoc::StatusCode::FirstBit;
 
     #[derive(Debug)]
     pub struct DecodedResponse {
@@ -193,37 +189,37 @@ pub mod decoder {
             Err(_) => {
                 Err(std::io::Error::new(ErrorKind::Other, "Failed to read message length."))
             }
+        };
+    }
+
+    pub fn read_message(tcp_stream: &mut TcpStream, message_length: u64) -> std::io::Result<Vec<u8>> {
+        let bytes = read_bytes(tcp_stream, message_length as usize)?;
+        Ok(bytes)
+    }
+
+    pub fn decode_tcp_stream(tcp_stream: &mut TcpStream) -> std::io::Result<DecodedResponse> {
+        let (status, app_status) = read_first_byte(tcp_stream)?;
+        if status != FirstBit as u8 {
+            let error = format!("Invalid starting byte received. Expected 1 but received {}", status);
+            return Err(std::io::Error::new(ErrorKind::Other, error));
         }
+
+        let protocol_version = read_protocol_version(tcp_stream)?;
+        let number_of_files = read_files_count(tcp_stream)?;
+        let files = read_files(tcp_stream, number_of_files)?;
+
+        let message_length = read_message_length(tcp_stream)?;
+        let message = read_message(tcp_stream, message_length)?;
+
+        return Ok(DecodedResponse {
+            status,
+            app_status,
+            protocol_version,
+            number_of_files,
+            files,
+            message,
+        });
     }
-}
-
-pub fn read_message(tcp_stream: &mut TcpStream, message_length: u64) -> std::io::Result<Vec<u8>> {
-    let bytes = read_bytes(tcp_stream, message_length as usize)?;
-    Ok(bytes)
-}
-
-pub fn decode_tcp_stream(tcp_stream: &mut TcpStream) -> std::io::Result<DecodedResponse> {
-    let (status, app_status) = read_first_byte(tcp_stream)?;
-    if status != FirstBit as u8 {
-        let error = format!("Invalid starting byte received. Expected 1 but received {}", status);
-        return Err(std::io::Error::new(ErrorKind::Other, error));
-    }
-
-    let protocol_version = read_protocol_version(tcp_stream)?;
-    let number_of_files = read_files_count(tcp_stream)?;
-    let files = read_files(tcp_stream, number_of_files)?;
-
-    let message_length = read_message_length(tcp_stream)?;
-    let message = read_message(tcp_stream, message_length)?;
-
-    return Ok(DecodedResponse {
-        status,
-        app_status,
-        protocol_version,
-        number_of_files,
-        files,
-        message,
-    });
 }
 
 #[cfg(test)]
