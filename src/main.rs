@@ -1,9 +1,9 @@
 use std::io::Write;
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::thread;
-use tej_protoc::protoc::decoder::{decode_tcp_stream, DecodedResponse};
-use tej_protoc::protoc::encoder::{build_bytes, build_bytes_for_message, build_raw_bytes};
-use tej_protoc::protoc::File;
+use tej_protoc::protoc::decoder::{DecodedResponse};
+use tej_protoc::protoc::encoder::{build_raw_bytes};
+use tej_protoc::protoc::{decode_tcp_stream, File};
 
 
 fn handle_decoded_response(tcp_stream: &mut TcpStream, decoded_response: DecodedResponse) {

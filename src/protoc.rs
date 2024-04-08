@@ -1,3 +1,8 @@
+use std::io::ErrorKind;
+use std::net::TcpStream;
+use crate::protoc::decoder::{DecodedResponse, read_bytes, read_files, read_files_count, read_first_byte, read_message_length, read_protocol_version};
+use crate::protoc::StatusCode::FirstBit;
+
 pub enum StatusCode {
     FirstBit = 1,
     Ping = 2,
@@ -81,10 +86,9 @@ pub mod encoder {
 }
 
 pub mod decoder {
-    use std::io::{Read};
+    use std::io::{ErrorKind, Read};
     use std::net::TcpStream;
     use crate::protoc::File;
-    use crate::protoc::StatusCode::FirstBit;
 
     #[derive(Debug)]
     pub struct DecodedResponse {
@@ -96,7 +100,7 @@ pub mod decoder {
         pub message: Vec<u8>,
     }
 
-    pub fn read_bytes(tcp_stream: &mut TcpStream, size: usize) -> Vec<u8> {
+    pub fn read_bytes(tcp_stream: &mut TcpStream, size: usize) -> std::io::Result<Vec<u8>> {
         let mut bytes: Vec<u8> = Vec::new();
         let mut read = 0;
 
@@ -106,113 +110,120 @@ pub mod decoder {
             // If data to read is lesser than buffer size, read the remaining data else read limited data
             if remaining < 1024 {
                 let mut buffer: Vec<u8> = vec![0u8; remaining];
-                tcp_stream.read_exact(&mut buffer).unwrap();
+                tcp_stream.read_exact(&mut buffer)?;
                 bytes.extend(buffer);
                 read += remaining;
             } else {
                 let mut buffer = [0u8; 1024];
-                tcp_stream.read_exact(&mut buffer).unwrap();
+                tcp_stream.read_exact(&mut buffer)?;
                 bytes.extend(buffer);
                 read += 1024;
             }
         }
 
-        return bytes;
+        Ok(bytes)
     }
 
-    pub fn read_first_byte(tcp_stream: &mut TcpStream) -> (u8, u8) {
-        let bytes = read_bytes(tcp_stream, 1);
+    pub fn read_first_byte(tcp_stream: &mut TcpStream) -> std::io::Result<(u8, u8)> {
+        let bytes = read_bytes(tcp_stream, 1)?;
 
         // Extract status codes
         let mixed_status = bytes[0];
         let status_code = mixed_status >> 7;
         let app_status = mixed_status & 0b01111111;
-        return (status_code, app_status);
+        Ok((status_code, app_status))
     }
 
-    pub fn read_protocol_version(tcp_stream: &mut TcpStream) -> u8 {
-        let bytes = read_bytes(tcp_stream, 1);
-        return bytes[0];
+    pub fn read_protocol_version(tcp_stream: &mut TcpStream) -> std::io::Result<u8> {
+        let bytes = read_bytes(tcp_stream, 1)?;
+        Ok(bytes[0])
     }
 
-    pub fn read_files_count(tcp_stream: &mut TcpStream) -> u64 {
-        let bytes = read_bytes(tcp_stream, 8);
-        return u64::from_be_bytes(bytes.try_into().unwrap());
+    pub fn read_files_count(tcp_stream: &mut TcpStream) -> std::io::Result<u64> {
+        let bytes = read_bytes(tcp_stream, 8)?;
+        Ok(u64::from_be_bytes(bytes.try_into().unwrap()))
     }
 
-    pub fn read_filename_length(tcp_stream: &mut TcpStream) -> u16 {
-        let bytes = read_bytes(tcp_stream, 2);
-        return u16::from_be_bytes(bytes.try_into().unwrap());
+    pub fn read_filename_length(tcp_stream: &mut TcpStream) -> std::io::Result<u16> {
+        let bytes = read_bytes(tcp_stream, 2)?;
+        Ok(u16::from_be_bytes(bytes.try_into().unwrap()))
     }
 
-    pub fn read_filename(tcp_stream: &mut TcpStream, filename_length: u16) -> Vec<u8> {
-        let bytes = read_bytes(tcp_stream, filename_length as usize);
-        return bytes;
+    pub fn read_filename(tcp_stream: &mut TcpStream, filename_length: u16) -> std::io::Result<Vec<u8>> {
+        let bytes = read_bytes(tcp_stream, filename_length as usize)?;
+        Ok(bytes)
     }
 
-    pub fn read_file_size(tcp_stream: &mut TcpStream) -> u64 {
-        let bytes = read_bytes(tcp_stream, 8);
-        return u64::from_be_bytes(bytes.try_into().unwrap());
+    pub fn read_file_size(tcp_stream: &mut TcpStream) -> std::io::Result<u64> {
+        let bytes = read_bytes(tcp_stream, 8)?;
+        Ok(u64::from_be_bytes(bytes.try_into().unwrap()))
     }
 
-    pub fn read_file_data(tcp_stream: &mut TcpStream, file_size: u64) -> Vec<u8> {
-        let bytes = read_bytes(tcp_stream, file_size as usize);
-        return bytes;
+    pub fn read_file_data(tcp_stream: &mut TcpStream, file_size: u64) -> std::io::Result<Vec<u8>> {
+        let bytes = read_bytes(tcp_stream, file_size as usize)?;
+        Ok(bytes)
     }
 
-    pub fn read_files(tcp_stream: &mut TcpStream, num_files: u64) -> Vec<File> {
+    pub fn read_files(tcp_stream: &mut TcpStream, num_files: u64) -> std::io::Result<Vec<File>> {
         let mut files: Vec<File> = Vec::new();
 
         for _ in 0..num_files {
             // Extract filename
-            let filename_length = read_filename_length(tcp_stream);
-            let filename = read_filename(tcp_stream, filename_length);
+            let filename_length = read_filename_length(tcp_stream)?;
+            let filename = read_filename(tcp_stream, filename_length)?;
 
             // Extreact file data
-            let file_size = read_file_size(tcp_stream);
-            let file_data = read_file_data(tcp_stream, file_size).to_vec();
+            let file_size = read_file_size(tcp_stream)?;
+            let file_data = read_file_data(tcp_stream, file_size)?.to_vec();
 
             let file = File::new(filename, file_data);
             files.push(file);
         }
 
-        return files;
+        Ok(files)
     }
 
-    pub fn read_message_length(tcp_stream: &mut TcpStream) -> u64 {
-        let bytes = read_bytes(tcp_stream, 8);
-        return u64::from_be_bytes(bytes.try_into().unwrap());
-    }
-
-    pub fn read_message(tcp_stream: &mut TcpStream, message_length: u64) -> Vec<u8> {
-        let bytes = read_bytes(tcp_stream, message_length as usize);
-        return bytes;
-    }
-
-    pub fn decode_tcp_stream(tcp_stream: &mut TcpStream) -> Result<DecodedResponse, String> {
-        let (status, app_status) = read_first_byte(tcp_stream);
-        if status != FirstBit as u8 {
-            let error = format!("Invalid starting byte received. Expected 1 but received {}", status);
-            eprintln!("{}", error);
-            return Err(error);
+    pub fn read_message_length(tcp_stream: &mut TcpStream) -> std::io::Result<u64> {
+        let bytes = read_bytes(tcp_stream, 8)?;
+        return match bytes.try_into() {
+            Ok(bytes) => {
+                let bytes: [u8; 8] = bytes;
+                Ok(u64::from_be_bytes(bytes))
+            }
+            Err(_) => {
+                Err(std::io::Error::new(ErrorKind::Other, "Failed to read message length."))
+            }
         }
-
-        let protocol_version = read_protocol_version(tcp_stream);
-        let number_of_files = read_files_count(tcp_stream);
-        let files = read_files(tcp_stream, number_of_files);
-
-        let message_length = read_message_length(tcp_stream);
-        let message = read_message(tcp_stream, message_length);
-
-        return Ok(DecodedResponse {
-            status,
-            app_status,
-            protocol_version,
-            number_of_files,
-            files,
-            message,
-        });
     }
+}
+
+pub fn read_message(tcp_stream: &mut TcpStream, message_length: u64) -> std::io::Result<Vec<u8>> {
+    let bytes = read_bytes(tcp_stream, message_length as usize)?;
+    Ok(bytes)
+}
+
+pub fn decode_tcp_stream(tcp_stream: &mut TcpStream) -> std::io::Result<DecodedResponse> {
+    let (status, app_status) = read_first_byte(tcp_stream)?;
+    if status != FirstBit as u8 {
+        let error = format!("Invalid starting byte received. Expected 1 but received {}", status);
+        return Err(std::io::Error::new(ErrorKind::Other, error));
+    }
+
+    let protocol_version = read_protocol_version(tcp_stream)?;
+    let number_of_files = read_files_count(tcp_stream)?;
+    let files = read_files(tcp_stream, number_of_files)?;
+
+    let message_length = read_message_length(tcp_stream)?;
+    let message = read_message(tcp_stream, message_length)?;
+
+    return Ok(DecodedResponse {
+        status,
+        app_status,
+        protocol_version,
+        number_of_files,
+        files,
+        message,
+    });
 }
 
 #[cfg(test)]
