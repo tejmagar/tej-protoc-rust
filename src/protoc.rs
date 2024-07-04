@@ -16,7 +16,7 @@ impl File {
 }
 
 pub mod encoder {
-    use crate::protoc::{File};
+    use crate::protoc::File;
 
     pub fn build_raw_bytes(app_status: u8, protocol_version: u8, files: &Vec<&File>,
                            message: &Vec<u8>) -> Vec<u8> {
@@ -81,10 +81,13 @@ pub mod encoder {
 }
 
 pub mod decoder {
-    use std::io::{ErrorKind, Read};
-    use std::net::TcpStream;
+    use std::io::ErrorKind;
+    use std::sync::Arc;
+
+
     use crate::protoc::File;
     use crate::protoc::StatusCode::FirstBit;
+    use crate::stream::Stream;
 
     #[derive(Debug)]
     pub struct DecodedResponse {
@@ -94,34 +97,10 @@ pub mod decoder {
         pub number_of_files: u64,
         pub files: Vec<File>,
         pub message: Vec<u8>,
-    }
+    } 
 
-    pub fn read_bytes(tcp_stream: &mut TcpStream, size: usize) -> std::io::Result<Vec<u8>> {
-        let mut bytes: Vec<u8> = Vec::new();
-        let mut read = 0;
-
-        while read != size {
-            let remaining = size - read;
-
-            // If data to read is lesser than buffer size, read the remaining data else read limited data
-            if remaining < 1024 {
-                let mut buffer: Vec<u8> = vec![0u8; remaining];
-                tcp_stream.read_exact(&mut buffer)?;
-                bytes.extend(buffer);
-                read += remaining;
-            } else {
-                let mut buffer = [0u8; 1024];
-                tcp_stream.read_exact(&mut buffer)?;
-                bytes.extend(buffer);
-                read += 1024;
-            }
-        }
-
-        Ok(bytes)
-    }
-
-    pub fn read_first_byte(tcp_stream: &mut TcpStream) -> std::io::Result<(u8, u8)> {
-        let bytes = read_bytes(tcp_stream, 1)?;
+    pub async fn read_first_byte(stream: Arc<Stream>) -> std::io::Result<(u8, u8)> {
+        let bytes = stream.read_exact(1).await?;
 
         // Extract status codes
         let mixed_status = bytes[0];
@@ -130,47 +109,47 @@ pub mod decoder {
         Ok((status_code, app_status))
     }
 
-    pub fn read_protocol_version(tcp_stream: &mut TcpStream) -> std::io::Result<u8> {
-        let bytes = read_bytes(tcp_stream, 1)?;
+    pub async fn read_protocol_version(stream: Arc<Stream>) -> std::io::Result<u8> {
+        let bytes = stream.read_exact(1).await?;
         Ok(bytes[0])
     }
 
-    pub fn read_files_count(tcp_stream: &mut TcpStream) -> std::io::Result<u64> {
-        let bytes = read_bytes(tcp_stream, 8)?;
+    pub async fn read_files_count(stream: Arc<Stream>) -> std::io::Result<u64> {
+        let bytes = stream.read_exact(8).await?;
         Ok(u64::from_be_bytes(bytes.try_into().unwrap()))
     }
 
-    pub fn read_filename_length(tcp_stream: &mut TcpStream) -> std::io::Result<u16> {
-        let bytes = read_bytes(tcp_stream, 2)?;
+    pub async fn read_filename_length(stream: Arc<Stream>) -> std::io::Result<u16> {
+        let bytes = stream.read_exact(2).await?;
         Ok(u16::from_be_bytes(bytes.try_into().unwrap()))
     }
 
-    pub fn read_filename(tcp_stream: &mut TcpStream, filename_length: u16) -> std::io::Result<Vec<u8>> {
-        let bytes = read_bytes(tcp_stream, filename_length as usize)?;
+    pub async fn read_filename(stream: Arc<Stream>, filename_length: u16) -> std::io::Result<Vec<u8>> {
+        let bytes = stream.read_exact(filename_length as usize).await?;
         Ok(bytes)
     }
 
-    pub fn read_file_size(tcp_stream: &mut TcpStream) -> std::io::Result<u64> {
-        let bytes = read_bytes(tcp_stream, 8)?;
+    pub async fn read_file_size(stream: Arc<Stream>) -> std::io::Result<u64> {
+        let bytes = stream.read_exact(8).await?;
         Ok(u64::from_be_bytes(bytes.try_into().unwrap()))
     }
 
-    pub fn read_file_data(tcp_stream: &mut TcpStream, file_size: u64) -> std::io::Result<Vec<u8>> {
-        let bytes = read_bytes(tcp_stream, file_size as usize)?;
+    pub async fn read_file_data(stream: Arc<Stream>, file_size: u64) -> std::io::Result<Vec<u8>> {
+        let bytes = stream.read_exact(file_size as usize).await?;
         Ok(bytes)
     }
 
-    pub fn read_files(tcp_stream: &mut TcpStream, num_files: u64) -> std::io::Result<Vec<File>> {
+    pub async fn read_files(stream: Arc<Stream>, num_files: u64) -> std::io::Result<Vec<File>> {
         let mut files: Vec<File> = Vec::new();
 
         for _ in 0..num_files {
             // Extract filename
-            let filename_length = read_filename_length(tcp_stream)?;
-            let filename = read_filename(tcp_stream, filename_length)?;
+            let filename_length = read_filename_length(stream.clone()).await?;
+            let filename = read_filename(stream.clone(), filename_length).await?;
 
             // Extreact file data
-            let file_size = read_file_size(tcp_stream)?;
-            let file_data = read_file_data(tcp_stream, file_size)?.to_vec();
+            let file_size = read_file_size(stream.clone()).await?;
+            let file_data = read_file_data(stream.clone(), file_size).await?.to_vec();
 
             let file = File::new(filename, file_data);
             files.push(file);
@@ -179,8 +158,8 @@ pub mod decoder {
         Ok(files)
     }
 
-    pub fn read_message_length(tcp_stream: &mut TcpStream) -> std::io::Result<u64> {
-        let bytes = read_bytes(tcp_stream, 8)?;
+    pub async fn read_message_length(stream: Arc<Stream>) -> std::io::Result<u64> {
+        let bytes = stream.read_exact(8).await?;
         return match bytes.try_into() {
             Ok(bytes) => {
                 let bytes: [u8; 8] = bytes;
@@ -192,24 +171,24 @@ pub mod decoder {
         };
     }
 
-    pub fn read_message(tcp_stream: &mut TcpStream, message_length: u64) -> std::io::Result<Vec<u8>> {
-        let bytes = read_bytes(tcp_stream, message_length as usize)?;
+    pub async fn read_message(stream: Arc<Stream>, message_length: u64) -> std::io::Result<Vec<u8>> {
+        let bytes = stream.read_exact(message_length as usize).await?;
         Ok(bytes)
     }
 
-    pub fn decode_tcp_stream(tcp_stream: &mut TcpStream) -> std::io::Result<DecodedResponse> {
-        let (status, app_status) = read_first_byte(tcp_stream)?;
+    pub async fn decode_tcp_stream(stream: Arc<Stream>) -> std::io::Result<DecodedResponse> {
+        let (status, app_status) = read_first_byte(stream.clone()).await?;
         if status != FirstBit as u8 {
             let error = format!("Invalid starting byte received. Expected 1 but received {}", status);
             return Err(std::io::Error::new(ErrorKind::Other, error));
         }
 
-        let protocol_version = read_protocol_version(tcp_stream)?;
-        let number_of_files = read_files_count(tcp_stream)?;
-        let files = read_files(tcp_stream, number_of_files)?;
+        let protocol_version = read_protocol_version(stream.clone()).await?;
+        let number_of_files = read_files_count(stream.clone()).await?;
+        let files = read_files(stream.clone(), number_of_files).await?;
 
-        let message_length = read_message_length(tcp_stream)?;
-        let message = read_message(tcp_stream, message_length)?;
+        let message_length = read_message_length(stream.clone()).await?;
+        let message = read_message(stream.clone(), message_length).await?;
 
         return Ok(DecodedResponse {
             status,
@@ -226,7 +205,7 @@ pub mod decoder {
 pub mod tests {
     use std::fs;
     use std::io::Read;
-    use crate::protoc::{File};
+    use crate::protoc::File;
     use crate::protoc::encoder::build_raw_bytes;
 
     #[test]

@@ -8,12 +8,15 @@ use tokio::sync::Mutex;
 
 pub type Stream = Box<dyn AbstractStream + Send + Sync + Unpin>;
 
+
 pub type StreamResult<'a, T> = Box<dyn Future<Output = T>  + Send + Sync + Unpin + 'a>;
 
 pub trait AbstractStream {
     fn buffer_size(&self) -> StreamResult<usize>;
     fn read_chunk(&self) -> StreamResult<std::io::Result<Vec<u8>>>;
-    fn write_chunk(&self) -> StreamResult<std::io::Result<()>>;
+    fn read_exact(&self, size: usize) -> StreamResult<std::io::Result<Vec<u8>>>;
+    fn restore_payload(&self, bytes: Vec<u8>) -> StreamResult<std::io::Result<()>>;
+    fn write_chunk<'a>(&'a self, bytes: &'a [u8]) -> StreamResult<std::io::Result<()>>;
     fn shutdown(&self) -> StreamResult<std::io::Result<()>>;
 }
 
@@ -21,6 +24,7 @@ pub struct TcpStreamWrapper {
     std_tcp_stream: Arc<Mutex<std::net::TcpStream>>,
     reader: Arc<Mutex<ReadHalf<TcpStream>>>,
     writer: Arc<Mutex<WriteHalf<TcpStream>>>,
+    restored_bytes: Arc<Mutex<Option<Vec<u8>>>>,
     buffer_size: usize
 }
 
@@ -36,6 +40,7 @@ impl TcpStreamWrapper {
             std_tcp_stream: Arc::new(Mutex::new(std_tcp_stream)),
             reader: Arc::new(Mutex::new(reader)),
             writer: Arc::new(Mutex::new(writer)),
+            restored_bytes: Arc::new(Mutex::new(None)),
             buffer_size
         })
     } 
@@ -50,6 +55,11 @@ impl AbstractStream for TcpStreamWrapper {
 
     fn read_chunk(&self) -> StreamResult<std::io::Result<Vec<u8>>> {
         Box::new(Box::pin(async move {
+            let mut restored_bytes = self.restored_bytes.lock().await;
+            if let Some(bytes) = restored_bytes.take() {
+                return Ok(bytes);
+            }
+
             let mut buffer = vec![0u8; self.buffer_size];
             let mut reader = self.reader.lock().await;
             let read_size = reader.read(&mut buffer).await?;
@@ -58,11 +68,33 @@ impl AbstractStream for TcpStreamWrapper {
         }))
     }
 
-    fn write_chunk(&self) -> StreamResult<std::io::Result<()>> {
+    fn read_exact(&self, size: usize) -> StreamResult<std::io::Result<Vec<u8>>> {
         Box::new(Box::pin(async move {
-            let mut buffer = vec![0u8; self.buffer_size];
+            let mut buffer = Vec::with_capacity(size);
+
+            while buffer.len() < size {
+                let chunk = self.read_chunk().await?;
+                buffer.extend(chunk);
+            }
+
+            let to_restore_bytes: Vec<u8> = buffer.drain(size..).collect();
+            self.restore_payload(to_restore_bytes).await?;
+            return Ok(buffer);
+        }))
+    }
+
+    fn write_chunk<'a>(&'a self, bytes: &'a[u8]) -> StreamResult<std::io::Result<()>> {
+        Box::new(Box::pin(async move {
             let mut writer = self.writer.lock().await;
-            writer.write(&mut buffer).await?;
+            writer.write(&bytes).await?;
+            Ok(())
+        }))
+    }
+
+    fn restore_payload(&self, bytes: Vec<u8>) -> StreamResult<std::io::Result<()>> {
+        Box::new(Box::pin(async move {
+            let mut restored_bytes = self.restored_bytes.lock().await;
+            *restored_bytes = Some(bytes);
             Ok(())
         }))
     }

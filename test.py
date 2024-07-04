@@ -45,5 +45,5 @@ def test_client():
 
 
 if __name__ == '__main__':
-    # test_client()
-    test_server()
+    test_client()
+    # test_server()
