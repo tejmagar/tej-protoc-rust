@@ -63,6 +63,11 @@ impl AbstractStream for TcpStreamWrapper {
             let mut buffer = vec![0u8; self.buffer_size];
             let mut reader = self.reader.lock().await;
             let read_size = reader.read(&mut buffer).await?;
+
+            if read_size == 0{
+                return Err(std::io::Error::other("Read size is 0. Probably connection broken."));
+            }
+
             let chunk = &buffer[0..read_size];
             Ok(chunk.to_vec())
         }))
