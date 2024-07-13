@@ -91,7 +91,7 @@ impl AbstractStream for TcpStreamWrapper {
     fn write_chunk<'a>(&'a self, bytes: &'a[u8]) -> StreamResult<std::io::Result<()>> {
         Box::new(Box::pin(async move {
             let mut writer = self.writer.lock().await;
-            writer.write(&bytes).await?;
+            writer.write_all(&bytes).await?;
             Ok(())
         }))
     }
